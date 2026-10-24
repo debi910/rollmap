@@ -6,7 +6,7 @@
 
 // PLAYWRIGHT=/path/to/playwright/index.mjs picks a Playwright build that matches an installed browser.
 const { chromium } = await import(process.env.PLAYWRIGHT ?? 'playwright');
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const url = process.argv[2] ?? 'http://127.0.0.1:5173/';
@@ -22,6 +22,27 @@ const context = await browser.newContext({
   recordVideo: { dir: tmpDir, size: { width: 1280, height: 720 } },
 });
 const page = await context.newPage();
+const t0 = Date.now();
+
+// Voiceover: clips made by scripts/make-voice.py. Each line starts once the previous one has
+// finished, and its start time is logged so the audio can be laid onto the video afterwards.
+let durations = {};
+try {
+  durations = JSON.parse(readFileSync(join(outDir, 'voice/durations.json'), 'utf8'));
+} catch {
+  console.warn('no voice/durations.json: recording without voiceover cues');
+}
+const cues = [];
+let speechEnd = 0;
+async function say(id) {
+  const d = durations[id];
+  if (d == null) return;
+  const gap = speechEnd - Date.now();
+  if (gap > 0) await page.waitForTimeout(gap);
+  cues.push({ id, t: Date.now() - t0 });
+  speechEnd = Date.now() + d + 350;
+}
+const speechLeft = () => Math.max(0, speechEnd - Date.now());
 const wait = (ms) => page.waitForTimeout(ms);
 
 async function caption(text, sub = '') {
@@ -54,7 +75,7 @@ async function card(title, lines, ms) {
     },
     [title, lines],
   );
-  await wait(ms);
+  await wait(Math.max(ms, speechLeft() + 300));
   await page.evaluate(() => document.getElementById('demo-card')?.remove());
 }
 
@@ -79,6 +100,7 @@ await page.reload();
 await page.waitForSelector('.route-card', { timeout: 30000 });
 await wait(1500);
 
+await say('intro');
 await card(
   'RollMap',
   [
@@ -88,37 +110,48 @@ await card(
   6500,
 );
 
+await say('monaco');
 await caption('Plan a trip in Monaco: hilly, full of steps and old paving', 'Real OpenStreetMap streets, steps and buildings. Coloured lines are the community comfort layer.');
 await wait(4500);
+await say('short');
 await caption('The shortest walk uses 5 flights of steps and 429 m of rough ground', 'Impossible in a wheelchair, and a rough ride with a stroller.');
 await highlight('.route-card.is-short', 3200);
+await say('smooth');
 await caption('RollMap finds a step-free route that is far smoother: comfort 89 vs 53', 'Cost = distance × measured discomfort, jolts, surface and incline, tuned to your chair.');
 await highlight('.route-card.is-smooth', 3200);
 await highlight('.verdict', 2200);
 await page.getByRole('radio', { name: /Stroller/ }).click();
+await say('profiles');
 await caption('Profiles weigh roughness differently: manual chair, power chair, stroller');
 await wait(2800);
 await page.getByRole('radio', { name: /Manual/ }).click();
 await wait(800);
 
+await say('sensing');
 await caption('Now the sensing: roll with a phone in the wheelchair bag', 'For this video we play a SIMULATED sensor stream through the exact pipeline the phone runs.');
 await wait(3500);
 await page.getByRole('button', { name: 'Simulate', exact: true }).click();
 await wait(2500);
+await say('iso');
 await caption('Live comfort score uses ISO 2631-1 Wk weighting', 'The international standard for how the seated human body feels vibration.');
 await wait(7000);
+await say('surface');
 await caption('An on-device neural network names the surface', 'Smooth, cracked, pavers, gravel. Trained on physics-based simulated rides.');
 await wait(7000);
+await say('orientation');
 await caption('Works with the phone in any orientation', 'Gravity tells us which way is down; vibration is projected onto it.');
 await wait(7000);
+await say('jolts');
 await caption('Curb drops and potholes are caught as jolts', 'Peak acceleration plus crest factor separates a single shock from continuous rough ground.');
 await page.waitForFunction(() => document.body.innerText.includes('Ride summary'), null, { timeout: 180000 });
 await wait(600);
+await say('summary');
 await caption('After the ride: vibration dose and the ISO 2631 health zone', 'For people who roll all day, vibration exposure is a health issue, not just comfort.');
 await highlight('.summary', 4500);
 
 await page.getByRole('button', { name: /Review \d+ repair report/ }).click();
 await wait(800);
+await say('reports');
 await caption('Every problem becomes a ready-to-send city repair report', 'GPS location + measured shock. Copy, share, or export GeoJSON / Open311 for 311 systems.');
 await wait(2500);
 await page.getByRole('button', { name: 'Show on map' }).first().click();
@@ -126,6 +159,7 @@ await wait(2500);
 await page.getByRole('button', { name: 'Copy report' }).first().click().catch(() => {});
 await wait(2000);
 
+await say('real');
 await card(
   'Checked on real phone rides',
   [
@@ -137,12 +171,14 @@ await card(
 );
 
 await page.getByRole('tab', { name: 'How it works' }).click();
+await say('honest');
 await caption('Open, explainable, and honest about what is simulated', 'Sensing, scoring, routing and reports run on real phones today. "Teach RollMap" collects labelled field data.');
 await wait(3000);
 await page.evaluate(() => document.querySelector('.sheet-body')?.scrollTo({ top: 600, behavior: 'smooth' }));
 await wait(4000);
 await caption('');
 
+await say('outro');
 await card(
   'RollMap',
   [
@@ -153,6 +189,8 @@ await card(
   6000,
 );
 
+await wait(speechLeft());
+writeFileSync(join(outDir, 'voice/cues.json'), JSON.stringify(cues, null, 1));
 const video = page.video();
 await context.close();
 const dest = join(outDir, 'rollmap-demo.webm');
