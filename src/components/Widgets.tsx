@@ -1,34 +1,34 @@
 import { useEffect, useRef } from 'react';
+import NumberFlow from '@number-flow/react';
+import clsx from 'clsx';
 import { comfortBand, scoreColor } from '../core/comfort';
 
-export function Gauge({ score, aw }: { score: number | null; aw: number | null }) {
-  const r = 52;
-  const c = 2 * Math.PI * r * 0.75;
+export function Gauge({ score, aw, size = 148 }: { score: number | null; aw: number | null; size?: number }) {
+  const r = 58;
+  const arc = 2 * Math.PI * r * 0.75;
   const pct = score == null ? 0 : score / 100;
-  const color = score == null ? 'var(--muted)' : scoreColor(score);
+  const color = score == null ? 'var(--gray-6)' : scoreColor(score);
   return (
     <div className="gauge" role="img" aria-label={score == null ? 'Comfort score: waiting for data' : `Comfort score ${score} out of 100`}>
-      <svg viewBox="0 0 128 128" width="128" height="128">
-        <circle cx="64" cy="64" r={r} fill="none" stroke="var(--track)" strokeWidth="12" strokeDasharray={`${c} 999`} strokeLinecap="round" transform="rotate(135 64 64)" />
+      <svg viewBox="0 0 140 140" width={size} height={size}>
+        <circle cx="70" cy="70" r={r} fill="none" stroke="var(--gray-3)" strokeWidth="10" strokeDasharray={`${arc} 999`} strokeLinecap="round" transform="rotate(135 70 70)" />
         <circle
-          cx="64"
-          cy="64"
+          className="gauge-arc"
+          cx="70"
+          cy="70"
           r={r}
           fill="none"
           stroke={color}
-          strokeWidth="12"
-          strokeDasharray={`${c * pct} 999`}
+          strokeWidth="10"
+          strokeDasharray={`${arc * pct} 999`}
           strokeLinecap="round"
-          transform="rotate(135 64 64)"
-          style={{ transition: 'stroke-dasharray 0.3s, stroke 0.3s' }}
+          transform="rotate(135 70 70)"
         />
-        <text x="64" y="68" textAnchor="middle" className="gauge-num">
-          {score ?? '–'}
-        </text>
-        <text x="64" y="90" textAnchor="middle" className="gauge-sub">
-          comfort
-        </text>
       </svg>
+      <div className="gauge-center">
+        <div className="gauge-num">{score == null ? '–' : <NumberFlow value={score} />}</div>
+        <div className="gauge-sub">comfort</div>
+      </div>
       <div className="gauge-label" style={{ color }}>
         {aw == null ? 'Waiting for movement' : comfortBand(aw).label}
       </div>
@@ -36,7 +36,7 @@ export function Gauge({ score, aw }: { score: number | null; aw: number | null }
   );
 }
 
-/** Live vertical-acceleration trace, the "seismograph" of the ride. */
+/** Live vertical-acceleration trace: the seismograph of the ride. */
 export function Waveform({ trace }: { trace: number[] }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -45,26 +45,32 @@ export function Waveform({ trace }: { trace: number[] }) {
     const dpr = window.devicePixelRatio || 1;
     const w = cv.clientWidth;
     const h = cv.clientHeight;
-    if (cv.width !== w * dpr) {
-      cv.width = w * dpr;
-      cv.height = h * dpr;
+    if (cv.width !== Math.round(w * dpr)) {
+      cv.width = Math.round(w * dpr);
+      cv.height = Math.round(h * dpr);
     }
     const ctx = cv.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const styles = getComputedStyle(cv);
-    ctx.strokeStyle = styles.getPropertyValue('--track');
+    ctx.strokeStyle = styles.getPropertyValue('--gray-4');
+    ctx.setLineDash([2, 4]);
     ctx.beginPath();
     ctx.moveTo(0, h / 2);
     ctx.lineTo(w, h / 2);
     ctx.stroke();
-    const scale = h / 2 / 15; // ±15 m/s² full scale
-    ctx.strokeStyle = styles.getPropertyValue('--accent');
-    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    const scale = h / 2 / 8; // ±8 m/s² full scale
+    const grad = ctx.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, 'transparent');
+    grad.addColorStop(0.25, styles.getPropertyValue('--accent'));
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1.6;
+    ctx.lineJoin = 'round';
     ctx.beginPath();
     trace.forEach((v, i) => {
       const x = (i / 240) * w;
-      const y = h / 2 - Math.max(-15, Math.min(15, v)) * scale;
+      const y = h / 2 - Math.max(-8, Math.min(8, v)) * scale;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
@@ -73,35 +79,37 @@ export function Waveform({ trace }: { trace: number[] }) {
   return <canvas ref={ref} className="wave" aria-label="Live vibration trace" />;
 }
 
-export function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+export function Stat({ label, value, unit, hint, decimals = 0 }: { label: string; value: number | string | null; unit?: string; hint?: string; decimals?: number }) {
   return (
     <div className="stat" title={hint}>
-      <div className="stat-v">{value}</div>
+      <div className="stat-v">
+        {value == null ? '–' : typeof value === 'number' ? <NumberFlow value={value} format={{ maximumFractionDigits: decimals, minimumFractionDigits: decimals }} /> : value}
+        {unit && value != null && <span className="stat-u">{unit}</span>}
+      </div>
       <div className="stat-l">{label}</div>
     </div>
   );
 }
 
-export function Legend() {
-  const items: [number, string][] = [
-    [95, 'Smooth'],
-    [65, 'OK'],
-    [45, 'Bumpy'],
-    [25, 'Rough'],
-    [5, 'Very rough'],
-  ];
+export function Legend({ showSegments, onToggle }: { showSegments: boolean; onToggle: () => void }) {
   return (
-    <div className="legend" aria-label="Map legend">
-      {items.map(([s, l]) => (
-        <span key={l}>
-          <i style={{ background: scoreColor(s) }} />
-          {l}
+    <div className="legend">
+      <button className={clsx('legend-toggle', !showSegments && 'is-off')} onClick={onToggle} aria-pressed={showSegments}>
+        <span className="legend-title">Sidewalk comfort</span>
+        <span className="legend-bar" aria-hidden />
+        <span className="legend-ends">
+          <span>Smooth</span>
+          <span>Very rough</span>
         </span>
-      ))}
-      <span>
-        <i className="legend-steps" />
-        Steps
-      </span>
+      </button>
+      <div className="legend-keys">
+        <span>
+          <i className="k-steps" /> Steps
+        </span>
+        <span>
+          <i className="k-route" /> Route
+        </span>
+      </div>
     </div>
   );
 }

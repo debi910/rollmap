@@ -1,41 +1,53 @@
 import type { MlpModel } from '../ml/mlp';
 
+const STEPS: [string, string][] = [
+  ['Sense', "The phone's accelerometer reads vibration 60+ times a second. Gravity tells us which way is down, so the phone can sit in a bag any way up."],
+  ['Score like a doctor would', "Vibration is weighted with ISO 2631-1's Wk curve, the international standard for how the seated body feels shaking. You get a 0–100 comfort score and a daily vibration dose."],
+  ['Recognise the ground', 'A small neural network on the phone (15 signal features → 32 → 4) tells smooth pavement, cracked concrete, bricks and gravel apart. A shock detector catches curbs and potholes.'],
+  ['Map it', 'Readings snap to OpenStreetMap street segments and combine across riders into a shared comfort layer.'],
+  ['Route and report', 'Routing avoids steps, steep slopes and rough segments for your chair or stroller. Every problem becomes a city repair report as text, GeoJSON or Open311.'],
+];
+
 export function AboutPanel({ model, seedRides }: { model: MlpModel; seedRides: number }) {
   return (
     <div className="stack prose">
-      <h2>How RollMap works</h2>
-      <ol>
-        <li>
-          <strong>Sense.</strong> The phone's accelerometer reads vibration about 60 times a second. Gravity tells us which way is down, so the phone can sit in a bag any way up.
-        </li>
-        <li>
-          <strong>Score like a doctor would.</strong> Vibration is weighted with ISO 2631-1's W<sub>k</sub> curve, the international standard for how the seated human body feels shaking. The result is a 0–100 comfort score and a daily vibration dose (VDV).
-        </li>
-        <li>
-          <strong>Recognise the ground.</strong> A small neural network (15 signal features → 32 → 4) running on the phone tells smooth pavement, cracked concrete, bricks and gravel apart. It also flags single jolts like curbs and potholes.
-        </li>
-        <li>
-          <strong>Map it.</strong> Readings snap to OpenStreetMap street segments and combine across riders into a shared comfort layer.
-        </li>
-        <li>
-          <strong>Route and report.</strong> Routing avoids steps, steep slopes and rough segments, tuned to your wheelchair or stroller. Every problem becomes a city repair report (text, GeoJSON or Open311).
-        </li>
+      <div>
+        <h2>How RollMap works</h2>
+        <p className="muted">Map apps rate routes by distance. RollMap measures what a wheelchair rider actually feels.</p>
+      </div>
+      <ol className="steps">
+        {STEPS.map(([t, d], i) => (
+          <li key={t} style={{ ['--d' as string]: `${i * 40}ms` }}>
+            <span className="step-n">{i + 1}</span>
+            <div>
+              <strong>{t}</strong>
+              <p>{d}</p>
+            </div>
+          </li>
+        ))}
       </ol>
 
-      <h3>Why it matters</h3>
-      <p>
-        Mapping apps rate routes by distance. Wheelchair users find broken sidewalks and missing curb ramps only when they're already stuck on them. Research projects like UW's Project Sidewalk judge sidewalks from photos. MyPath (2022) showed phone vibration can classify surfaces, but it never shipped. RollMap measures what the rider actually feels, works in a browser with no install, and is useful from the very first ride.
-      </p>
+      <div className="card">
+        <strong>Why it's new</strong>
+        <p className="muted small">
+          Project Sidewalk judges sidewalks from photos. The MyPath research prototype (2022) showed that phone vibration can classify surfaces, but it never shipped. RollMap runs in any phone browser with no install, scores comfort with a medical standard, and is useful from the very first ride.
+        </p>
+      </div>
 
-      <h3>Honest status (hackathon build)</h3>
-      <ul>
-        <li>
-          The classifier was trained on {model.trainedOn.synthetic.toLocaleString()} windows from a physics-based simulator (wheel-surface excitation through a seat resonance) and {model.trainedOn.real} real labelled windows. Held-out simulated accuracy: {Math.round((model.metrics?.heldOutSyntheticAccuracy ?? 0) * 100)}% per 1.3 s window, about 89% per street segment. Real-world accuracy still needs field data; "Teach RollMap" collects it.
-        </li>
-        <li>The Monaco community layer comes from {seedRides} simulated rides run through the same pipeline. Streets, steps and lifts are real OpenStreetMap data.</li>
-        <li>Comfort scoring (ISO 2631 W<sub>k</sub>), jolt detection, routing and reports work on real sensor data today.</li>
-      </ul>
-      <p className="muted small">Map data © OpenStreetMap contributors (ODbL). Monaco extract via the GraphHopper project.</p>
+      <div className="card">
+        <strong>Honest status</strong>
+        <ul className="small muted">
+          <li>
+            The classifier was trained on {model.trainedOn.synthetic.toLocaleString()} windows from a physics-based simulator and {model.trainedOn.real} real labelled windows. Accuracy on held-out simulated rides: {Math.round((model.metrics?.heldOutSyntheticAccuracy ?? 0) * 100)}% per 1.3 s window, about 89% per street segment.
+          </li>
+          <li>
+            Checked on real public phone rides: on 4 bicycle rides in Guwahati the score picked out the road that photos show is failing as the worst of 6, in every ride, and all 15 photographed defects had a jolt nearby. On 6 labelled car drives, vibration peaks separate real potholes from other bumps with AUC 0.87.
+          </li>
+          <li>The Monaco comfort layer comes from {seedRides} simulated rides run through the same pipeline. Streets, steps, lifts and buildings are real OpenStreetMap data.</li>
+          <li>Live sensing, ISO scoring, jolt and slope detection, routing and reports work on real phones today.</li>
+        </ul>
+      </div>
+      <p className="fineprint">Map data © OpenStreetMap contributors (ODbL), via the GraphHopper project's Monaco extract.</p>
     </div>
   );
 }

@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import clsx from 'clsx';
+import { toast } from 'sonner';
+import { Copy, Crosshair, Download, FileJson, Mountain, Send, TriangleAlert, Waves } from 'lucide-react';
 import { issueSeverity, issuesGeoJson, issueTitle, open311Request, reportText } from '../core/issues';
 import { serializeSegments, type SegmentMap } from '../geo/segments';
 import { clearAll, download, loadTraining, type Issue, type RideRecord } from '../store';
@@ -11,17 +13,18 @@ interface Props {
   onCleared: () => void;
 }
 
+const KIND_ICON = { jolt: TriangleAlert, rough: Waves, steep: Mountain };
+
 export function ReportsPanel({ issues, rides, mySegments, onFocus, onCleared }: Props) {
-  const [copied, setCopied] = useState<string | null>(null);
   const sorted = [...issues].sort((a, b) => sevRank(b) - sevRank(a) || b.t - a.t);
 
   const copy = async (i: Issue) => {
     try {
       await navigator.clipboard.writeText(reportText(i));
-      setCopied(i.id);
-      setTimeout(() => setCopied(null), 1500);
+      toast.success('Report copied', { description: 'Paste it into your city’s 311 form or an email.' });
     } catch {
       download(`rollmap-report-${i.id}.txt`, reportText(i), 'text/plain');
+      toast('Report downloaded as text');
     }
   };
   const share = async (i: Issue) => {
@@ -40,8 +43,13 @@ export function ReportsPanel({ issues, rides, mySegments, onFocus, onCleared }: 
   if (!issues.length) {
     return (
       <div className="stack">
-        <h2>Repair reports</h2>
-        <p className="muted">Nothing yet. After a ride, every curb without a ramp, pothole, broken stretch and steep slope shows up here as a ready-to-send report with location and measured evidence.</p>
+        <div className="hero">
+          <span className="hero-icon">
+            <TriangleAlert size={22} />
+          </span>
+          <h2>No reports yet</h2>
+          <p className="muted">After a ride, every curb without a ramp, pothole, broken stretch and steep slope lands here as a ready-to-send repair report with its location and measured evidence.</p>
+        </div>
       </div>
     );
   }
@@ -51,62 +59,78 @@ export function ReportsPanel({ issues, rides, mySegments, onFocus, onCleared }: 
       <div>
         <h2>Repair reports</h2>
         <p className="muted">
-          {issues.length} problems from {rides.length} ride{rides.length > 1 ? 's' : ''}. Each one carries GPS location and the measured shock or vibration, so a city crew knows exactly where to go.
+          {issues.length} problem{issues.length > 1 ? 's' : ''} from {rides.length} ride{rides.length > 1 ? 's' : ''}, each with GPS location and the measured shock, so a crew knows exactly where to go.
         </p>
       </div>
       <ul className="issues">
-        {sorted.map((i) => (
-          <li key={i.id} className={`issue sev-${issueSeverity(i)}`}>
-            <div className="row between">
-              <strong>{issueTitle(i)}</strong>
-              <span className={`sev sev-${issueSeverity(i)}`}>{issueSeverity(i)}</span>
-            </div>
-            <div className="muted small">
-              {i.street ?? `${i.lat.toFixed(5)}, ${i.lon.toFixed(5)}`} · {new Date(i.t).toLocaleTimeString()}
-              {i.simulated && ' · simulated'}
-            </div>
-            <div className="small">
-              {i.kind === 'jolt' && `Shock ${(i.peakG ?? 0).toFixed(1)} g`}
-              {i.kind === 'rough' && `Comfort ${i.score}/100 over ${i.lengthM} m`}
-              {i.kind === 'steep' && `Tilt ${(i.tilt ?? 0).toFixed(1)}° over ${i.lengthM} m`}
-            </div>
-            <div className="row">
-              <button className="btn btn-sm" onClick={() => onFocus(i.lat, i.lon)}>
-                Show
-              </button>
-              <button className="btn btn-sm" onClick={() => copy(i)}>
-                {copied === i.id ? 'Copied ✓' : 'Copy report'}
-              </button>
-              <button className="btn btn-sm" onClick={() => share(i)}>
-                Send
-              </button>
-              <button className="btn btn-sm" onClick={() => download(`open311-${i.id}.json`, open311Request(i))} title="Open311 GeoReport v2 request body">
-                311 JSON
-              </button>
-            </div>
-          </li>
-        ))}
+        {sorted.map((i, idx) => {
+          const Icon = KIND_ICON[i.kind];
+          const sev = issueSeverity(i);
+          return (
+            <li key={i.id} className={clsx('issue', `sev-${sev}`)} style={{ ['--d' as string]: `${Math.min(idx, 8) * 40}ms` }}>
+              <span className={clsx('issue-icon', `sev-${sev}`, i.kind === 'steep' && 'is-steep')}>
+                <Icon size={16} />
+              </span>
+              <div className="issue-main">
+                <div className="issue-title">{issueTitle(i)}</div>
+                <div className="issue-meta">
+                  {i.street ?? `${i.lat.toFixed(5)}, ${i.lon.toFixed(5)}`}
+                  {i.simulated && <span className="badge is-amber">Simulated</span>}
+                </div>
+                <div className="issue-measure">
+                  {i.kind === 'jolt' && `${(i.peakG ?? 0).toFixed(1)} g shock`}
+                  {i.kind === 'rough' && `Comfort ${i.score}/100 over ${i.lengthM} m`}
+                  {i.kind === 'steep' && `${(i.tilt ?? 0).toFixed(1)}° tilt over ${i.lengthM} m`}
+                  <span className={clsx('sev', `sev-${sev}`)}>{sev}</span>
+                </div>
+              </div>
+              <div className="issue-actions">
+                <button className="icon-btn" onClick={() => onFocus(i.lat, i.lon)} aria-label="Show on map" title="Show on map">
+                  <Crosshair size={16} />
+                </button>
+                <button className="icon-btn" onClick={() => copy(i)} aria-label="Copy report" title="Copy report">
+                  <Copy size={16} />
+                </button>
+                <button className="icon-btn" onClick={() => share(i)} aria-label="Send report" title="Send report">
+                  <Send size={16} />
+                </button>
+                <button
+                  className="icon-btn"
+                  onClick={() => {
+                    download(`open311-${i.id}.json`, open311Request(i));
+                    toast('Open311 request saved');
+                  }}
+                  aria-label="Download Open311 request"
+                  title="Open311 GeoReport v2 request"
+                >
+                  <FileJson size={16} />
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
       <div className="card">
         <strong>Export</strong>
         <div className="row wrap">
           <button className="btn btn-sm" onClick={() => download('rollmap-issues.geojson', issuesGeoJson(issues), 'application/geo+json')}>
-            All issues (GeoJSON)
+            <Download size={14} /> Issues · GeoJSON
           </button>
           <button className="btn btn-sm" onClick={() => download('rollmap-segments.json', { segments: serializeSegments(mySegments) })}>
-            My street scores
+            <Download size={14} /> Street scores
           </button>
           <button className="btn btn-sm" onClick={() => download('rollmap-training.json', { windows: loadTraining() })}>
-            Labelled training data
+            <Download size={14} /> Training data
           </button>
         </div>
       </div>
       <button
-        className="btn btn-sm btn-ghost"
+        className="btn btn-ghost btn-xs"
         onClick={() => {
           if (confirm('Delete all rides and reports stored on this device?')) {
             clearAll();
             onCleared();
+            toast('Your rides were deleted from this device');
           }
         }}
       >

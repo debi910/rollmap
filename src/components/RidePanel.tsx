@@ -1,3 +1,5 @@
+import clsx from 'clsx';
+import { Activity, Play, Smartphone, Square } from 'lucide-react';
 import type { LiveState } from '../ride/session';
 import type { RideRecord } from '../store';
 import { SURFACE_LABELS, SURFACES, type Surface } from '../core/synth';
@@ -22,9 +24,9 @@ const time = (ms: number) => {
 };
 
 const ZONES = {
-  below: ['Below the ISO 2631 health caution zone', 'good'],
-  caution: ['In the ISO 2631 health caution zone if ridden for 8 h a day', 'warn'],
-  'likely-risk': ['Above the caution zone: health risk likely with daily exposure', 'bad'],
+  below: ['Below the ISO 2631 health caution zone', 'is-good'],
+  caution: ['In the ISO 2631 health caution zone if ridden 8 h a day', 'is-warn'],
+  'likely-risk': ['Above the caution zone: health risk likely with daily exposure', 'is-bad'],
 } as const;
 
 export function RidePanel(p: Props) {
@@ -33,31 +35,46 @@ export function RidePanel(p: Props) {
     const w = l.last;
     return (
       <div className="stack">
-        {l.simulated && <div className="badge-sim">Simulated ride</div>}
-        {l.error && <div className="alert">{l.error}</div>}
+        <div className="row between">
+          <span className="rec">
+            <span className="live-dot" /> {l.simulated ? 'Simulated ride' : 'Recording'}
+          </span>
+          <span className="mono muted">{time(l.elapsedMs)}</span>
+        </div>
+        {l.error && <div className="note is-bad">{l.error}</div>}
         <div className="live">
           <Gauge score={w?.score ?? null} aw={w?.aw ?? null} />
           <div className="live-side">
-            <div className="surface-chip">
-              <span className="muted small">Surface</span>
-              <strong>{w ? SURFACE_LABELS[w.surface as Surface] ?? w.surface : '—'}</strong>
-              {w && <span className="muted small">{Math.round(w.surfaceConfidence * 100)}% sure</span>}
+            <div className="surface">
+              <span className="eyebrow">Surface</span>
+              <strong>{w ? (SURFACE_LABELS[w.surface as Surface] ?? w.surface) : '–'}</strong>
+              <span className="conf" aria-hidden>
+                <span style={{ transform: `scaleX(${w?.surfaceConfidence ?? 0})` }} />
+              </span>
+              <span className="muted xs">{w ? `${Math.round(w.surfaceConfidence * 100)}% confident` : 'Listening…'}</span>
             </div>
-            {w?.jolt && <div className="jolt-flash">Jolt! {(w.peak / 9.81).toFixed(1)} g</div>}
+            <div className={clsx('jolt', w?.jolt && 'is-on')} aria-live="polite">
+              {w?.jolt ? `Jolt · ${(w.peak / 9.81).toFixed(1)} g` : `${l.jolts} jolt${l.jolts === 1 ? '' : 's'} so far`}
+            </div>
           </div>
         </div>
-        <Waveform trace={l.trace} />
+        <div className="card tight">
+          <div className="eyebrow row between">
+            <span>
+              <Activity size={12} /> Vertical vibration
+            </span>
+            <span>±8 m/s²</span>
+          </div>
+          <Waveform trace={l.trace} />
+        </div>
         <div className="stats">
-          <Stat label="Time" value={time(l.elapsedMs)} />
-          <Stat label="Distance" value={`${Math.round(l.distanceM)} m`} />
-          <Stat label="Jolts" value={String(l.jolts)} />
-          <Stat label="Tilt" value={w ? `${w.tilt.toFixed(1)}°` : '—'} hint="Sustained tilt over 3° is flagged as steep" />
-          <Stat label="Sensor" value={`${Math.round(l.sampleHz)} Hz`} />
-          <Stat label="GPS" value={l.gpsAccuracy == null ? '—' : `±${Math.round(l.gpsAccuracy)} m`} />
+          <Stat label="Distance" value={Math.round(l.distanceM)} unit="m" />
+          <Stat label="Tilt" value={w ? w.tilt : null} unit="°" decimals={1} hint="Sustained tilt over 3° is flagged as steep" />
+          <Stat label="Sensor" value={Math.round(l.sampleHz)} unit="Hz" />
         </div>
         {!l.simulated && <TeachMode label={p.label} setLabel={p.setLabel} />}
-        <button className="btn btn-big btn-stop" onClick={p.onStop}>
-          Stop ride
+        <button className="btn btn-danger btn-lg" onClick={p.onStop}>
+          <Square size={14} fill="currentColor" /> Stop ride
         </button>
       </div>
     );
@@ -66,26 +83,21 @@ export function RidePanel(p: Props) {
   return (
     <div className="stack">
       {p.lastRide && <Summary ride={p.lastRide} onReports={p.onReports} />}
-      <div>
+      <div className="hero">
+        <span className="hero-icon">
+          <Smartphone size={22} />
+        </span>
         <h2>Record a ride</h2>
-        <p className="muted">
-          Put your phone in the wheelchair's bag or seat pocket, any way up, and roll. RollMap reads the vibration and slope, scores every street, and spots curbs and potholes.
-        </p>
+        <p className="muted">Put your phone in the wheelchair bag, any way up, and roll. RollMap reads vibration and slope, scores every street, and catches curbs and potholes.</p>
       </div>
-      <button className="btn btn-big btn-go" onClick={p.onStart}>
+      <button className="btn btn-primary btn-lg" onClick={p.onStart}>
         Start ride
       </button>
-      <p className="muted small">Keep the screen on while riding. Phones pause sensors when they sleep. Data stays on this phone.</p>
+      <button className="btn btn-lg" disabled={!p.canSimulate} onClick={() => p.onSimulate(25)}>
+        <Play size={15} fill="currentColor" /> Simulate a ride
+      </button>
       <TeachMode label={p.label} setLabel={p.setLabel} />
-      <div className="card">
-        <strong>No phone or wheelchair handy?</strong>
-        <p className="muted small">Run a simulated ride along the route from the Route tab.</p>
-        <div className="row">
-          <button className="btn" disabled={!p.canSimulate} onClick={() => p.onSimulate(10)}>
-            Simulate ride ×10
-          </button>
-        </div>
-      </div>
+      <p className="fineprint">Keep the screen on while riding; phones pause sensors when asleep. Your data stays on this phone.</p>
     </div>
   );
 }
@@ -93,9 +105,9 @@ export function RidePanel(p: Props) {
 function TeachMode({ label, setLabel }: { label: string; setLabel: (l: string) => void }) {
   return (
     <label className="field">
-      <span>Teach RollMap (optional): I'm rolling on</span>
+      <span>Teach RollMap · I'm rolling on</span>
       <select value={label} onChange={(e) => setLabel(e.target.value)}>
-        <option value="">Don't label</option>
+        <option value="">Don't label this ride</option>
         {SURFACES.map((s) => (
           <option key={s} value={s}>
             {SURFACE_LABELS[s]}
@@ -113,21 +125,20 @@ function Summary({ ride, onReports }: { ride: RideRecord; onReports: () => void 
     <div className="card summary">
       <div className="row between">
         <strong>Ride summary</strong>
-        {ride.simulated && <span className="badge-sim">Simulated</span>}
+        {ride.simulated && <span className="badge is-amber">Simulated</span>}
       </div>
       <div className="stats">
-        <Stat label="Comfort" value={`${ride.score}/100`} />
-        <Stat label="Distance" value={`${ride.distanceM} m`} />
-        <Stat label="aw (ISO)" value={`${ride.aw.toFixed(2)} m/s²`} hint="Frequency-weighted RMS acceleration, ISO 2631-1" />
-        <Stat label="VDV" value={ride.vdv.toFixed(1)} hint="Vibration dose value, m/s^1.75" />
+        <Stat label="Comfort" value={ride.score} unit="/100" />
+        <Stat label="Distance" value={ride.distanceM} unit="m" />
+        <Stat label="Jolts" value={counts.jolt ?? 0} />
+        <Stat label="aw · ISO 2631" value={ride.aw} unit="m/s²" decimals={2} hint="Frequency-weighted RMS acceleration" />
+        <Stat label="Vibration dose" value={ride.vdv} decimals={1} hint="VDV, m/s^1.75" />
+        <Stat label="Rough stretches" value={counts.rough ?? 0} />
       </div>
-      <div className={`zone ${cls}`}>{text}</div>
-      <p className="small">
-        Found {counts.jolt ?? 0} jolts, {counts.rough ?? 0} rough stretches, {counts.steep ?? 0} steep sections.
-      </p>
+      <div className={clsx('note', cls)}>{text}</div>
       {ride.issues.length > 0 && (
-        <button className="btn btn-go" onClick={onReports}>
-          Review & report to the city
+        <button className="btn btn-primary" onClick={onReports}>
+          Review {ride.issues.length} repair report{ride.issues.length > 1 ? 's' : ''}
         </button>
       )}
     </div>

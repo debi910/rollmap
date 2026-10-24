@@ -106,6 +106,21 @@ export class RoutableGraph {
     return Math.hypot(px, py) * 111320;
   }
 
+  /** Project a noisy GPS point onto the nearest street, for drawing clean trails. */
+  snap(lat: number, lon: number, maxDist = 20): [number, number] {
+    const hit = this.nearestEdge(lat, lon, maxDist);
+    if (!hit) return [lat, lon];
+    const e = this.edges[hit.edge];
+    const [la, lo] = this.data.nodes[e.a];
+    const [lb, lob] = this.data.nodes[e.b];
+    const k = Math.cos((lat * Math.PI) / 180);
+    const dx = (lob - lo) * k;
+    const dy = lb - la;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, (((lon - lo) * k) * dx + (lat - la) * dy) / len2)) : 0;
+    return [la + dy * t, lo + (lob - lo) * t];
+  }
+
   edgeCoords(idx: number): [number, number][] {
     const e = this.edges[idx];
     return [this.data.nodes[e.a], this.data.nodes[e.b]];

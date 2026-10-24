@@ -1,0 +1,86 @@
+{
+  "segments": [
+    {
+      "seg": "S4",
+      "name": "Library–Core 5",
+      "windows": 1212,
+      "meanScore": 22
+    },
+    {
+      "seg": "S3",
+      "name": "New SAC–Library",
+      "windows": 1284,
+      "meanScore": 30
+    },
+    {
+      "seg": "S2",
+      "name": "Serpentine–New SAC",
+      "windows": 934,
+      "meanScore": 34
+    },
+    {
+      "seg": "S1",
+      "name": "Faculty market–Serpentine",
+      "windows": 1593,
+      "meanScore": 35
+    },
+    {
+      "seg": "S5",
+      "name": "Core 5–Brahmaputra (backside)",
+      "windows": 1660,
+      "meanScore": 37
+    },
+    {
+      "seg": "S6",
+      "name": "Library–Brahmaputra (direct)",
+      "windows": 337,
+      "meanScore": 40
+    }
+  ],
+  "segmentByRide": {
+    "S1|rp2": 41,
+    "S2|rp2": 39,
+    "S3|rp2": 35,
+    "S4|rp2": 25,
+    "S6|rp2": 40,
+    "S5|rp2": 32,
+    "S5|rp3": 39,
+    "S4|rp3": 22,
+    "S3|rp3": 30,
+    "S2|rp3": 35,
+    "S1|rp3": 40,
+    "S5|rp5": 35,
+    "S4|rp5": 21,
+    "S3|rp5": 22,
+    "S2|rp5": 27,
+    "S1|rp5": 29,
+    "S1|rp6": 29,
+    "S3|rp6": 33,
+    "S4|rp6": 22,
+    "S5|rp6": 38
+  },
+  "repeatability": {
+    "cellPairs": 469,
+    "pearsonR": 0.44,
+    "meanAbsDiff": 10.7
+  },
+  "bikeJolts": {
+    "spotsFlaggedBy3PlusRides": 12,
+    "randomRoutePointsFlaggedBy3PlusRides": 0.46,
+    "movingWindows": 7371,
+    "joltWindows": 785,
+    "joltsPerKm": 48.3,
+    "photographedDefectSpots": 15,
+    "spotsWithJoltWithin25m": 15,
+    "meanRidesFlaggingEachSpot": 2.9
+  },
+  "carPotholes": {
+    "potholes": 12,
+    "notPothole": 141,
+    "peakAuc": 0.87,
+    "medianPeakPothole": 3,
+    "medianPeakOther": 1.2,
+    "joltRecall": 0,
+    "joltFalseRate": 0
+  }
+}
