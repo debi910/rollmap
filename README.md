@@ -16,6 +16,10 @@ Map apps rate a route by distance. Wheelchair users find the cracked slabs, cobb
 | **Score like a doctor would** | Vibration is frequency-weighted with **ISO 2631-1 W<sub>k</sub>**, the international standard for how the seated human body feels shaking. Each ride gets a comfort score, a vibration dose value (VDV) and the ISO health-guidance zone. |
 | **Recognise the ground** | An on-device neural network tells *smooth pavement*, *cracked/broken*, *bricks/pavers* and *gravel/grass* apart. A shock detector flags curb drops and potholes. |
 | **Smoothest route** | Dijkstra over OpenStreetMap footpaths. The cost blends measured comfort, jolts, OSM surface and incline tags, and your mobility profile (manual chair, power chair, stroller). Steps are never used. The panel compares it against the shortest walking route. |
+| **Why is this street rated that?** | Tap any street: its score, how many rides measured it and how recently, what it feels like, jolts per pass, and a confidence level. Streets nobody has measured yet say so and show an estimate from OpenStreetMap tags. |
+| **Report a barrier, no sensors needed** | Construction, a parked car, a curb with no ramp, a lift out of service: two taps on the street. Routes avoid it immediately and it joins the repair reports. Temporary barriers (blocked sidewalk, broken lift) expire after 14 days. |
+| **Plan around lifts and toilets** | Public lifts and toilets from OpenStreetMap are on the map. |
+| **Share a route** | A link that opens the same trip and profile, for a friend, carer or driver. |
 | **Report to the city** | Every jolt, rough stretch and steep section becomes a report with GPS location and measured evidence: copy or share as text, or export as GeoJSON (for GIS teams) or an Open311 GeoReport v2 request body (the API many 311 systems accept). |
 | **Teach RollMap** | Label what you're rolling on and the app saves labelled feature windows for retraining (`data/real/*.json` → `npm run train`). |
 

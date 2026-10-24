@@ -60,5 +60,23 @@ const labels = [...data.nodes.values()]
   .filter((n) => ['suburb', 'quarter', 'neighbourhood'].includes(n.tags.place ?? '') && n.tags.name)
   .map((n) => ({ name: n.tags.name, lat: r5(n.lat), lon: r5(n.lon) }));
 
-writeFileSync(output, JSON.stringify({ sea, islands, green, water, buildings, labels }));
+// Things a wheelchair rider plans around: public lifts and toilets.
+const centroid = (w: OsmWay) => {
+  const pts = w.nodes.map((id) => data.nodes.get(id)).filter((n) => !!n);
+  return pts.length ? { lat: pts.reduce((a, n) => a + n!.lat, 0) / pts.length, lon: pts.reduce((a, n) => a + n!.lon, 0) / pts.length } : null;
+};
+const pois: { kind: 'lift' | 'toilet'; lat: number; lon: number; name?: string; wheelchair?: string }[] = [];
+const poiKind = (t: Record<string, string>) => (t.highway === 'elevator' ? 'lift' : t.amenity === 'toilets' ? 'toilet' : null);
+for (const n of data.nodes.values()) {
+  const kind = poiKind(n.tags);
+  if (kind) pois.push({ kind, lat: r5(n.lat), lon: r5(n.lon), name: n.tags.name, wheelchair: n.tags.wheelchair });
+}
+for (const w of data.ways) {
+  const kind = poiKind(w.tags);
+  const c = kind && centroid(w);
+  if (kind && c) pois.push({ kind, lat: r5(c.lat), lon: r5(c.lon), name: w.tags.name, wheelchair: w.tags.wheelchair });
+}
+
+writeFileSync(output, JSON.stringify({ sea, islands, green, water, buildings, labels, pois }));
+console.log(`${pois.length} pois`);
 console.log(`sea ${sea?.length ?? 0} pts, ${islands.length} islands, ${green.length} green, ${water.length} water, ${buildings.length} buildings, ${labels.length} labels`);

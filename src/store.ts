@@ -3,9 +3,13 @@
 import type { WindowResult } from './core/analyzer';
 import type { SegmentStats } from './geo/segments';
 
+export type BarrierKind = 'blocked' | 'no_ramp' | 'lift' | 'hazard';
+
 export interface Issue {
   id: string;
-  kind: 'jolt' | 'rough' | 'steep';
+  kind: 'jolt' | 'rough' | 'steep' | 'barrier';
+  barrier?: BarrierKind; // set for problems a person reported by hand
+  edgeKey?: string; // street segment the barrier sits on, so routing can avoid it
   lat: number;
   lon: number;
   t: number;
@@ -35,6 +39,7 @@ export interface RideRecord {
 const KEY_RIDES = 'rollmap.rides.v1';
 const KEY_SEGMENTS = 'rollmap.segments.v1';
 const KEY_TRAINING = 'rollmap.training.v1';
+const KEY_BARRIERS = 'rollmap.barriers.v1';
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -58,6 +63,13 @@ export const saveRides = (rides: RideRecord[]) => write(KEY_RIDES, rides.slice(-
 export const loadMySegments = () => read<SegmentStats[]>(KEY_SEGMENTS, []);
 export const saveMySegments = (s: SegmentStats[]) => write(KEY_SEGMENTS, s);
 
+// Construction and broken lifts are temporary: they drop off after two weeks unless re-reported.
+export const TEMPORARY_BARRIERS: BarrierKind[] = ['blocked', 'lift'];
+export const BARRIER_TTL_MS = 14 * 24 * 3600 * 1000;
+export const barrierExpired = (b: Issue, now = Date.now()) => !!b.barrier && TEMPORARY_BARRIERS.includes(b.barrier) && now - b.t > BARRIER_TTL_MS;
+export const loadBarriers = () => read<Issue[]>(KEY_BARRIERS, []).filter((b) => !barrierExpired(b));
+export const saveBarriers = (b: Issue[]) => write(KEY_BARRIERS, b);
+
 export interface TrainingWindow {
   label: string;
   features: number[];
@@ -67,7 +79,7 @@ export const loadTraining = () => read<TrainingWindow[]>(KEY_TRAINING, []);
 export const saveTraining = (w: TrainingWindow[]) => write(KEY_TRAINING, w.slice(-20000));
 
 export function clearAll() {
-  for (const k of [KEY_RIDES, KEY_SEGMENTS, KEY_TRAINING]) {
+  for (const k of [KEY_RIDES, KEY_SEGMENTS, KEY_TRAINING, KEY_BARRIERS]) {
     try {
       localStorage.removeItem(k);
     } catch {

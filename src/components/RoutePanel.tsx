@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import clsx from 'clsx';
-import { Accessibility, Baby, BatteryCharging, Footprints, Play, Sparkles } from 'lucide-react';
+import { Accessibility, Baby, BatteryCharging, ChevronDown, Footprints, MousePointerClick, Play, Share2, Sparkles } from 'lucide-react';
 import { PROFILES, type ProfileId, type RouteResult } from '../geo/router';
 import { scoreColor } from '../core/comfort';
 
@@ -16,9 +17,10 @@ interface Props {
   setPicking: (p: 'from' | 'to' | null) => void;
   onDemo: () => void;
   onSimulate: (speedup: number) => void;
-  seedRides: number;
-  mySegments: number;
   riding: boolean;
+  firstVisit: boolean;
+  onDismissWelcome: () => void;
+  onShare: () => void;
 }
 
 const dist = (x: number) => (x >= 1000 ? `${(x / 1000).toFixed(2)} km` : `${Math.round(x)} m`);
@@ -28,8 +30,19 @@ const PROFILE_ICONS: Record<string, typeof Accessibility> = { manual: Accessibil
 const PROFILE_SHORT: Record<string, string> = { manual: 'Manual chair', power: 'Power chair', stroller: 'Stroller' };
 
 export function RoutePanel(p: Props) {
+  const [compare, setCompare] = useState(false);
   return (
     <div className="stack">
+      {p.firstVisit && (
+        <div className="welcome">
+          <strong>Find the smoothest way on wheels</strong>
+          <p>RollMap skips steps and steers around rough, broken sidewalks, using vibration measured by riders’ phones. Below is an example trip in Monaco.</p>
+          <button className="btn btn-sm btn-primary" onClick={p.onDismissWelcome}>
+            Got it
+          </button>
+        </div>
+      )}
+
       <div className="waypoints">
         <button className={clsx('waypoint', p.picking === 'from' && 'is-picking')} onClick={() => p.setPicking(p.picking === 'from' ? null : 'from')}>
           <span className="wp-dot is-a">A</span>
@@ -47,11 +60,11 @@ export function RoutePanel(p: Props) {
           </span>
         </button>
         <button className="btn btn-ghost btn-xs wp-demo" onClick={p.onDemo}>
-          <Sparkles size={14} /> Demo route
+          <Sparkles size={14} /> Example
         </button>
       </div>
 
-      <div className="chips" role="radiogroup" aria-label="Mobility profile">
+      <div className="chips" role="radiogroup" aria-label="Getting around by">
         {(['manual', 'power', 'stroller'] as ProfileId[]).map((id) => {
           const Icon = PROFILE_ICONS[id];
           return (
@@ -66,34 +79,38 @@ export function RoutePanel(p: Props) {
       {p.error && <div className="note is-bad">{p.error}</div>}
       {p.loading && <div className="skeleton" style={{ height: 196 }} />}
 
+      {p.smooth && <RouteCard route={p.smooth} kind="smooth" profile={p.profile} />}
+
       {p.smooth && p.short && (
-        <div className="options">
-          <RouteCard route={p.smooth} kind="smooth" />
-          <RouteCard route={p.short} kind="short" />
-          <p className="verdict">{verdict(p.short, p.smooth)}</p>
+        <div className={clsx('compare', compare && 'is-open')}>
+          <button className="compare-row" onClick={() => setCompare((v) => !v)} aria-expanded={compare}>
+            <Footprints size={16} />
+            <span>{compareLine(p.short, p.smooth)}</span>
+            <ChevronDown size={16} className="chev" />
+          </button>
+          {compare && <RouteCard route={p.short} kind="short" profile={p.profile} />}
         </div>
       )}
 
       {p.smooth && (
-        <div className="callout">
-          <div className="callout-text">
-            <strong>Watch it measure a ride</strong>
-            <span>Plays a simulated sensor stream along this route through the same analysis the phone runs.</span>
-          </div>
-          <button className="btn btn-primary" disabled={p.riding} onClick={() => p.onSimulate(25)}>
-            <Play size={16} fill="currentColor" /> Simulate
+        <div className="row actions">
+          <button className="btn btn-sm" onClick={p.onShare}>
+            <Share2 size={14} /> Share route
+          </button>
+          <button className="btn btn-sm" disabled={p.riding} onClick={() => p.onSimulate(25)}>
+            <Play size={14} fill="currentColor" /> Watch a demo ride
           </button>
         </div>
       )}
 
-      <p className="fineprint">
-        Comfort layer: {p.seedRides} simulated demo rides{p.mySegments ? ` + ${p.mySegments} segments you measured` : ''}. Streets, steps and lifts: OpenStreetMap.
+      <p className="tip">
+        <MousePointerClick size={14} /> Tap any street to see how it rides, or to report a blocked sidewalk.
       </p>
     </div>
   );
 }
 
-function RouteCard({ route, kind }: { route: RouteResult; kind: 'smooth' | 'short' }) {
+function RouteCard({ route, kind, profile }: { route: RouteResult; kind: 'smooth' | 'short'; profile: ProfileId }) {
   const s = route.stats;
   const smooth = kind === 'smooth';
   return (
@@ -102,11 +119,11 @@ function RouteCard({ route, kind }: { route: RouteResult; kind: 'smooth' | 'shor
         <div>
           <div className="rc-title">
             {smooth ? <Accessibility size={16} /> : <Footprints size={16} />}
-            {smooth ? 'RollMap route' : 'Shortest walk'}
-            {smooth && <span className="badge">Recommended</span>}
+            {smooth ? `Best for ${PROFILE_SHORT[profile].toLowerCase()}` : 'Shortest walk'}
           </div>
           <div className="rc-meta">
             {dist(route.length)} · {mins(route.length)}
+            {smooth && s.steps === 0 && ' · step-free'}
           </div>
         </div>
         <div className="rc-score" style={{ ['--c' as string]: scoreColor(s.comfort) }}>
@@ -127,14 +144,10 @@ function Fact({ bad, text }: { bad: boolean; text: string }) {
   return <span className={clsx('fact', bad ? 'is-bad' : 'is-good')}>{text}</span>;
 }
 
-function verdict(short: RouteResult, smooth: RouteResult): string {
-  const extra = smooth.length - short.length;
-  const parts: string[] = [];
-  const stepDiff = short.stats.steps - smooth.stats.steps;
-  if (stepDiff > 0) parts.push(`skips ${stepDiff} flight${stepDiff > 1 ? 's' : ''} of steps`);
-  const roughSaved = short.stats.roughMetres - smooth.stats.roughMetres;
-  if (roughSaved > 20) parts.push(`avoids ${Math.round(roughSaved)} m of rough ground`);
-  if (!parts.length) return 'Here the shortest route is also the smoothest.';
-  return `RollMap ${parts.join(' and ')}${extra > 10 ? `, for ${Math.round(extra)} m more` : ''}.`;
+function compareLine(short: RouteResult, smooth: RouteResult): string {
+  const bad: string[] = [];
+  if (short.stats.steps) bad.push(`${short.stats.steps} flight${short.stats.steps > 1 ? 's' : ''} of steps`);
+  if (short.stats.roughMetres - smooth.stats.roughMetres > 20) bad.push(`${Math.round(short.stats.roughMetres)} m rough`);
+  if (!bad.length) return `The shortest way is about the same (${dist(short.length)})`;
+  return `Shortest way is ${dist(short.length)}, but has ${bad.join(' and ')}`;
 }
-

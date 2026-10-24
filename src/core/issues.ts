@@ -2,7 +2,7 @@
 
 import { STEEP_TILT_DEG } from './comfort';
 import { haversine, type WindowResult } from './analyzer';
-import type { Issue } from '../store';
+import type { BarrierKind, Issue } from '../store';
 
 const ROUGH_SCORE = 50; // ISO 'fairly uncomfortable' and worse
 
@@ -68,13 +68,22 @@ export function detectIssues(rideId: string, windows: WindowResult[], simulated:
   return issues;
 }
 
+export const BARRIER_LABELS: Record<BarrierKind, { title: string; hint: string }> = {
+  blocked: { title: 'Sidewalk blocked', hint: 'Construction, parked car, scooters, bins' },
+  no_ramp: { title: 'Curb with no ramp', hint: 'A crossing you can’t get down or up' },
+  lift: { title: 'Lift out of service', hint: 'Public lift or elevator not working' },
+  hazard: { title: 'Other hazard', hint: 'Broken slab, hole, slippery, too narrow' },
+};
+
 export function issueTitle(i: Issue): string {
+  if (i.kind === 'barrier') return BARRIER_LABELS[i.barrier ?? 'hazard'].title;
   if (i.kind === 'jolt') return (i.peakG ?? 0) > 2 ? 'Severe jolt: curb without ramp or pothole' : 'Jolt: raised slab, crack or curb edge';
   if (i.kind === 'steep') return 'Steep slope for wheelchairs';
   return 'Rough, broken surface';
 }
 
 export function issueSeverity(i: Issue): 'high' | 'medium' | 'low' {
+  if (i.kind === 'barrier') return i.barrier === 'hazard' ? 'medium' : 'high';
   if (i.kind === 'jolt') return (i.peakG ?? 0) > 2 ? 'high' : 'medium';
   if (i.kind === 'steep') return (i.tilt ?? 0) > 6 ? 'high' : 'medium';
   return (i.score ?? 100) < 15 ? 'high' : 'medium';
@@ -90,6 +99,7 @@ export function reportText(i: Issue): string {
     `Recorded: ${when}`,
     `Severity: ${issueSeverity(i)}`,
   ];
+  if (i.kind === 'barrier') lines.push(`Reported by a wheelchair user on site: ${BARRIER_LABELS[i.barrier ?? 'hazard'].hint.toLowerCase()}.`);
   if (i.kind === 'jolt') lines.push(`Measured shock: ${(i.peakG ?? 0).toFixed(1)} g vertical acceleration at the wheelchair.`);
   if (i.kind === 'rough') {
     lines.push(`Comfort score: ${i.score}/100 over ${i.lengthM} m (ISO 2631-1 weighted vibration; under 50 is uncomfortable).`);
@@ -97,7 +107,9 @@ export function reportText(i: Issue): string {
   if (i.kind === 'steep') lines.push(`Sustained tilt of ${(i.tilt ?? 0).toFixed(1)}° over ${i.lengthM} m (ADA guidance: 2.9° running, 1.1° cross slope).`);
   lines.push(
     '',
-    'Measured automatically by RollMap from a phone carried on a wheelchair. Please inspect and repair so wheelchair users can pass safely.',
+    i.kind === 'barrier'
+      ? 'Reported through RollMap. Please clear or repair so wheelchair users can pass safely.'
+      : 'Measured automatically by RollMap from a phone carried on a wheelchair. Please inspect and repair so wheelchair users can pass safely.',
   );
   if (i.simulated) lines.push('', '[DEMO: this report was generated from a simulated ride.]');
   return lines.join('\n');
@@ -110,7 +122,7 @@ export function issuesGeoJson(issues: Issue[]) {
     features: issues.map((i) => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [i.lon, i.lat] },
-      properties: { id: i.id, kind: i.kind, title: issueTitle(i), severity: issueSeverity(i), recorded: new Date(i.t).toISOString(), peakG: i.peakG, comfortScore: i.score, tiltDeg: i.tilt, lengthM: i.lengthM, street: i.street, simulated: i.simulated },
+      properties: { id: i.id, kind: i.kind, barrier: i.barrier, title: issueTitle(i), severity: issueSeverity(i), recorded: new Date(i.t).toISOString(), peakG: i.peakG, comfortScore: i.score, tiltDeg: i.tilt, lengthM: i.lengthM, street: i.street, simulated: i.simulated },
     })),
   };
 }

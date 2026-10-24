@@ -83,4 +83,16 @@ describe('router', () => {
     expect(chair.stats.steps).toBe(0);
     expect(chair.length).toBeGreaterThan(walk.length);
   });
+
+  it('routes around a street someone reported as blocked', () => {
+    const noSteps = (e: { way: { h: string } }) => e.way.h !== 'steps';
+    const a = g.nearestNode(43.73405, 7.42161, noSteps)!;
+    const b = g.nearestNode(43.73845, 7.41924, noSteps)!;
+    const before = findRoute(g, new Map(), a, b, PROFILES.manual)!;
+    const blockedEdge = g.edges[before.edges[Math.floor(before.edges.length / 2)]];
+    const barriers = new Map([[blockedEdge.key, 'blocked' as const]]);
+    const after = findRoute(g, new Map(), a, b, PROFILES.manual, barriers)!;
+    expect(after.edges.map((i) => g.edges[i].key)).not.toContain(blockedEdge.key);
+    expect(after.stats.steps).toBe(0);
+  });
 });

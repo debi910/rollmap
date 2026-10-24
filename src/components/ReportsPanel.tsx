@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { toast } from 'sonner';
-import { Copy, Crosshair, Download, FileJson, Mountain, Send, TriangleAlert, Waves } from 'lucide-react';
+import { Construction, Copy, Crosshair, Download, FileJson, Mountain, Send, Trash2, TriangleAlert, Waves } from 'lucide-react';
 import { issueSeverity, issuesGeoJson, issueTitle, open311Request, reportText } from '../core/issues';
 import { serializeSegments, type SegmentMap } from '../geo/segments';
 import { clearAll, download, loadTraining, type Issue, type RideRecord } from '../store';
@@ -10,12 +10,18 @@ interface Props {
   rides: RideRecord[];
   mySegments: SegmentMap;
   onFocus: (lat: number, lon: number) => void;
+  onRemove: (id: string) => void;
   onCleared: () => void;
 }
 
-const KIND_ICON = { jolt: TriangleAlert, rough: Waves, steep: Mountain };
+const KIND_ICON = { jolt: TriangleAlert, rough: Waves, steep: Mountain, barrier: Construction };
 
-export function ReportsPanel({ issues, rides, mySegments, onFocus, onCleared }: Props) {
+const ago = (t: number) => {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 60 ? `${Math.max(1, m)} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+};
+
+export function ReportsPanel({ issues, rides, mySegments, onFocus, onRemove, onCleared }: Props) {
   const sorted = [...issues].sort((a, b) => sevRank(b) - sevRank(a) || b.t - a.t);
 
   const copy = async (i: Issue) => {
@@ -48,7 +54,7 @@ export function ReportsPanel({ issues, rides, mySegments, onFocus, onCleared }: 
             <TriangleAlert size={22} />
           </span>
           <h2>No reports yet</h2>
-          <p className="muted">After a ride, every curb without a ramp, pothole, broken stretch and steep slope lands here as a ready-to-send repair report with its location and measured evidence.</p>
+          <p className="muted">Problems land here as ready-to-send repair reports: the ones a ride measures (curb drops, potholes, broken or steep stretches) and the ones you report by tapping a street on the map.</p>
         </div>
       </div>
     );
@@ -59,7 +65,7 @@ export function ReportsPanel({ issues, rides, mySegments, onFocus, onCleared }: 
       <div>
         <h2>Repair reports</h2>
         <p className="muted">
-          {issues.length} problem{issues.length > 1 ? 's' : ''} from {rides.length} ride{rides.length > 1 ? 's' : ''}, each with GPS location and the measured shock, so a crew knows exactly where to go.
+          {issues.length} problem{issues.length > 1 ? 's' : ''}, each with its exact location{rides.length ? ' and, for measured ones, the shock the chair felt' : ''}, so a crew knows where to go.
         </p>
       </div>
       <ul className="issues">
@@ -81,6 +87,7 @@ export function ReportsPanel({ issues, rides, mySegments, onFocus, onCleared }: 
                   {i.kind === 'jolt' && `${(i.peakG ?? 0).toFixed(1)} g shock`}
                   {i.kind === 'rough' && `Comfort ${i.score}/100 over ${i.lengthM} m`}
                   {i.kind === 'steep' && `${(i.tilt ?? 0).toFixed(1)}° tilt over ${i.lengthM} m`}
+                  {i.kind === 'barrier' && `Reported by you · ${ago(i.t)}`}
                   <span className={clsx('sev', `sev-${sev}`)}>{sev}</span>
                 </div>
               </div>
@@ -105,6 +112,11 @@ export function ReportsPanel({ issues, rides, mySegments, onFocus, onCleared }: 
                 >
                   <FileJson size={16} />
                 </button>
+                {i.kind === 'barrier' && (
+                  <button className="icon-btn" onClick={() => onRemove(i.id)} aria-label="Mark as fixed" title="Fixed: remove this report">
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </li>
           );

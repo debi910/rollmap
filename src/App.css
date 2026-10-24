@@ -67,10 +67,17 @@
     background: var(--gray-5);
   }
   .sheet-head {
-    padding-top: 18px;
+    padding: 16px 18px 8px;
+  }
+  .brand-mark {
+    width: 26px;
+    height: 26px;
   }
   .brand-sub {
     display: none;
+  }
+  .welcome p {
+    font-size: 0.82rem;
   }
 }
 
@@ -1174,6 +1181,262 @@
   background: #2563eb;
 }
 
+/* ---------- First visit ---------- */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  animation: panel-in 260ms var(--ease-out);
+}
+.welcome strong {
+  font-size: 0.98rem;
+  letter-spacing: -0.01em;
+}
+.welcome p {
+  margin: 0 0 4px;
+  color: var(--gray-11);
+  font-size: 0.86rem;
+}
+
+/* ---------- Route comparison, collapsed by default ---------- */
+.compare {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.compare-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--gray-3);
+  color: var(--gray-11);
+  font: inherit;
+  font-size: 0.84rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    transform 140ms var(--ease-out);
+}
+.compare-row span {
+  flex: 1;
+}
+.compare-row:active {
+  transform: scale(0.99);
+}
+.compare-row .chev {
+  transition: transform 200ms var(--ease-out);
+}
+.compare.is-open .chev {
+  transform: rotate(180deg);
+}
+@media (hover: hover) and (pointer: fine) {
+  .compare-row:hover {
+    background: var(--gray-4);
+  }
+}
+.actions {
+  gap: 8px;
+}
+.actions .btn {
+  flex: 1;
+}
+.tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.tip svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* ---------- Street card (tap a street) ---------- */
+.map-card {
+  position: absolute;
+  z-index: 1050;
+  top: 12px;
+  left: calc(50% + 202px);
+  width: min(380px, calc(100vw - 24px));
+  transform: translateX(-50%);
+  animation: card-in 240ms var(--ease-out);
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.98);
+  }
+}
+@media (max-width: 860px) {
+  .map-card {
+    left: 50%;
+    top: max(12px, env(safe-area-inset-top));
+  }
+}
+.street-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.sc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sc-title {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.sc-title strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sc-score {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  color: color-mix(in srgb, var(--c) 80%, var(--text));
+  font-size: 1.05rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.sc-line {
+  margin: 0;
+  color: var(--gray-11);
+  font-size: 0.84rem;
+}
+.conf-dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+.conf-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gray-4);
+}
+.conf-dots i.on {
+  background: var(--accent);
+}
+.sc-barrier {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 0.82rem;
+}
+.sc-barrier span {
+  flex: 1;
+}
+.sc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.btn-warn {
+  color: var(--warn);
+}
+.sc-report {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sc-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.sc-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--gray-2);
+  box-shadow: var(--ring);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 140ms var(--ease-out),
+    background-color 160ms ease;
+}
+.sc-option strong {
+  font-size: 0.84rem;
+}
+.sc-option span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+.sc-option:active {
+  transform: scale(0.97);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sc-option:hover {
+    background: var(--gray-3);
+  }
+}
+
+/* ---------- Lifts, toilets, reported barriers ---------- */
+.poi {
+  display: grid !important;
+  place-items: center;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.poi-lift {
+  background: #0e7490;
+}
+.poi-wc {
+  background: #475569;
+}
+.issue-pin.is-barrier span {
+  background: #b45309;
+  font-size: 11px;
+}
+.k-lift {
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 3px;
+  background: #0e7490;
+}
+
 .toast {
   font-family: inherit !important;
 }
@@ -1184,7 +1447,9 @@
   .issue,
   .steps li,
   .summary,
-  .pick-hint {
+  .pick-hint,
+  .map-card,
+  .welcome {
     animation: fade 200ms ease both;
   }
   .rider-pulse,

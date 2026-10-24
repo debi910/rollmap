@@ -19,6 +19,14 @@ export interface Basemap {
   water: Ring[];
   buildings: Ring[];
   labels: { name: string; lat: number; lon: number }[];
+  pois?: Poi[];
+}
+export interface Poi {
+  kind: 'lift' | 'toilet';
+  lat: number;
+  lon: number;
+  name?: string;
+  wheelchair?: string;
 }
 
 interface Props {
@@ -34,6 +42,7 @@ interface Props {
   trail: WindowResult[];
   position: [number, number] | null;
   issues: Issue[];
+  selected?: [number, number][] | null;
   onMapClick?: (lat: number, lon: number) => void;
   focus?: Focus | null;
   padding?: { topLeft: [number, number]; bottomRight: [number, number] };
@@ -82,8 +91,10 @@ export function MapView(p: Props) {
       ['base', 200],
       ['streets', 300],
       ['segments', 350],
+      ['selected', 380],
       ['routes', 400],
       ['trail', 450],
+      ['pois', 600],
       ['issues', 620],
       ['labels', 640],
       ['pins', 660],
@@ -98,6 +109,8 @@ export function MapView(p: Props) {
     m.on('click', (e: L.LeafletMouseEvent) => clickRef.current?.(e.latlng.lat, e.latlng.lng));
     m.on('zoomend', () => setZoom(m.getZoom()));
     map.current = m;
+    // Lets the demo recorder find streets on screen; dev builds only.
+    if (import.meta.env.DEV) (window as unknown as { __rollmapMap: L.Map }).__rollmapMap = m;
     setZoom(m.getZoom());
 
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -202,6 +215,40 @@ export function MapView(p: Props) {
     }
   }, [p.smoothRoute, p.shortRoute, p.routeMuted, zoom]);
 
+  // Lifts and toilets: what a rider plans a trip around.
+  useEffect(() => {
+    const layer = layers.current.pois;
+    if (!layer || !p.basemap?.pois) return;
+    layer.clearLayers();
+    if (zoom < 15) return;
+    for (const poi of p.basemap.pois) {
+      const lift = poi.kind === 'lift';
+      const title = lift ? `Public lift${poi.name ? `: ${poi.name}` : ''}` : `Toilet${poi.wheelchair === 'yes' ? ' (wheelchair accessible)' : ''}${poi.name ? `: ${poi.name}` : ''}`;
+      L.marker([poi.lat, poi.lon], {
+        pane: 'pois',
+        title,
+        keyboard: false,
+        icon: L.divIcon({
+          className: `poi ${lift ? 'poi-lift' : 'poi-wc'}`,
+          html: lift
+            ? '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M5 2 2 6h6L5 2Zm6 12 3-4H8l3 4Z" fill="currentColor"/></svg>'
+            : '<span>WC</span>',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        }),
+      }).addTo(layer);
+    }
+  }, [p.basemap, zoom]);
+
+  // The street the rider tapped on, outlined so the info card clearly refers to it.
+  useEffect(() => {
+    const layer = layers.current.selected;
+    if (!layer) return;
+    layer.clearLayers();
+    if (!p.selected?.length) return;
+    L.polyline(p.selected, { pane: 'selected', color: '#0f172a', weight: 12, opacity: 0.28, lineCap: 'round', interactive: false }).addTo(layer);
+  }, [p.selected]);
+
   useEffect(() => {
     const layer = layers.current.pins;
     if (!layer) return;
@@ -269,7 +316,12 @@ export function MapView(p: Props) {
       const sev = issueSeverity(i);
       L.marker([i.lat, i.lon], {
         pane: 'issues',
-        icon: L.divIcon({ className: `issue-pin ${i.kind === 'steep' ? 'is-steep' : `is-${sev}`}`, html: '<span>!</span>', iconSize: [20, 20], iconAnchor: [10, 10] }),
+        icon: L.divIcon({
+          className: `issue-pin ${i.kind === 'barrier' ? 'is-barrier' : i.kind === 'steep' ? 'is-steep' : `is-${sev}`}`,
+          html: i.kind === 'barrier' ? '<span>✕</span>' : '<span>!</span>',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        }),
         title: issueTitle(i),
       }).addTo(layer);
     }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import clsx from 'clsx';
 import './App.css';
 import modelJson from './ml/model.json';
@@ -10,14 +10,15 @@ import { RidePanel } from './components/RidePanel';
 import { RoutePanel } from './components/RoutePanel';
 import { ReportsPanel } from './components/ReportsPanel';
 import { AboutPanel } from './components/AboutPanel';
+import { StreetCard, type StreetInfo } from './components/StreetCard';
 import { RoutableGraph } from './geo/graph';
 import type { StreetGraph } from './geo/osm';
-import { findRoute, PROFILES, type ProfileId, type RouteResult } from './geo/router';
-import { addRide, deserializeSegments, mergeSegments, serializeSegments, type SegmentMap, type SegmentStats } from './geo/segments';
+import { assessEdge, findRoute, PROFILES, type ProfileId, type RouteResult } from './geo/router';
+import { addRide, deserializeSegments, joltsPerRide, mergeSegments, segmentScore, serializeSegments, topSurface, type SegmentMap, type SegmentStats } from './geo/segments';
 import { RideSession, type LiveState } from './ride/session';
 import { simulateRide } from './sim/rideSim';
-import { loadMySegments, loadRides, loadTraining, saveMySegments, saveRides, saveTraining, type RideRecord } from './store';
-import type { WindowResult } from './core/analyzer';
+import { loadBarriers, loadMySegments, loadRides, loadTraining, saveBarriers, saveMySegments, saveRides, saveTraining, type BarrierKind, type Issue, type RideRecord } from './store';
+import { haversine, type WindowResult } from './core/analyzer';
 
 const model = modelJson as MlpModel;
 export type Tab = 'route' | 'ride' | 'reports' | 'about';
@@ -28,10 +29,31 @@ const DEMO_TO: [number, number] = [43.73845, 7.41924];
 
 const TABS: [Tab, string][] = [
   ['route', 'Route'],
-  ['ride', 'Ride'],
+  ['ride', 'Record'],
   ['reports', 'Reports'],
-  ['about', 'How it works'],
+  ['about', 'About'],
 ];
+
+// Shared links carry the trip in the URL: #from=lat,lon&to=lat,lon&p=manual
+function readHash(): { from?: [number, number]; to?: [number, number]; profile?: ProfileId } {
+  const q = new URLSearchParams(window.location.hash.slice(1));
+  const pt = (v: string | null): [number, number] | undefined => {
+    const m = v?.split(',').map(Number);
+    return m && m.length === 2 && m.every(Number.isFinite) ? [m[0], m[1]] : undefined;
+  };
+  const prof = q.get('p') as ProfileId | null;
+  return { from: pt(q.get('from')), to: pt(q.get('to')), profile: prof && prof in PROFILES ? prof : undefined };
+}
+const shared = readHash();
+
+const WELCOMED_KEY = 'rollmap.welcomed';
+const wasWelcomed = () => {
+  try {
+    return !!localStorage.getItem(WELCOMED_KEY) || !!shared.from;
+  } catch {
+    return false;
+  }
+};
 
 function mapPadding(): { topLeft: [number, number]; bottomRight: [number, number] } {
   // Keep fitted content clear of the floating sheet (left on desktop, bottom on phones).
@@ -49,10 +71,13 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('route');
   const [showSegments, setShowSegments] = useState(true);
 
-  const [from, setFrom] = useState<[number, number] | null>(DEMO_FROM);
-  const [to, setTo] = useState<[number, number] | null>(DEMO_TO);
+  const [from, setFrom] = useState<[number, number] | null>(shared.from ?? DEMO_FROM);
+  const [to, setTo] = useState<[number, number] | null>(shared.to ?? DEMO_TO);
   const [picking, setPicking] = useState<'from' | 'to' | null>(null);
-  const [profile, setProfile] = useState<ProfileId>('manual');
+  const [profile, setProfile] = useState<ProfileId>(shared.profile ?? 'manual');
+  const [barriers, setBarriers] = useState<Issue[]>(() => loadBarriers());
+  const [inspect, setInspect] = useState<{ edge: number; lat: number; lon: number } | null>(null);
+  const [firstVisit, setFirstVisit] = useState(() => !wasWelcomed());
 
   const [session, setSession] = useState<RideSession | null>(null);
   const [live, setLive] = useState<LiveState | null>(null);
@@ -76,6 +101,7 @@ export default function App() {
   }, []);
 
   const segments = useMemo(() => mergeSegments(seed, mine), [seed, mine]);
+  const barrierMap = useMemo(() => new Map(barriers.filter((b) => b.edgeKey).map((b) => [b.edgeKey!, b.barrier ?? 'hazard'] as [string, BarrierKind])), [barriers]);
 
   const routes = useMemo(() => {
     if (!graph || !from || !to) return { smooth: null as RouteResult | null, short: null as RouteResult | null, error: null as string | null };
@@ -84,10 +110,10 @@ export default function App() {
     const a = graph.nearestNode(from[0], from[1], accept);
     const b = graph.nearestNode(to[0], to[1], accept);
     if (a == null || b == null) return { smooth: null, short: null, error: 'Pick points closer to a street.' };
-    const smooth = findRoute(graph, segments, a, b, prof);
+    const smooth = findRoute(graph, segments, a, b, prof, barrierMap);
     const short = findRoute(graph, segments, a, b, PROFILES.walking);
     return { smooth, short, error: smooth ? null : 'No step-free route between these points.' };
-  }, [graph, from, to, profile, segments]);
+  }, [graph, from, to, profile, segments, barrierMap]);
 
   // Frame both routes whenever a new A→B pair is chosen (and on first load).
   const [fitRoutes, setFitRoutes] = useState(1);
@@ -101,9 +127,17 @@ export default function App() {
     (lat: number, lon: number) => {
       if (!graph) return undefined;
       const hit = graph.nearestEdge(lat, lon, 40, (e) => !!e.way.name) ?? graph.nearestEdge(lat, lon, 150, (e) => !!e.way.name);
-      return hit ? graph.edges[hit.edge].way.name : undefined;
+      if (hit) return graph.edges[hit.edge].way.name;
+      // Unnamed road: fall back to the neighbourhood so the user still knows roughly where it is.
+      let best: string | undefined;
+      let bestD = 1500;
+      for (const l of basemap?.labels ?? []) {
+        const d = haversine(lat, lon, l.lat, l.lon);
+        if (d < bestD) [best, bestD] = [l.name, d];
+      }
+      return best ? `Near ${best}` : undefined;
     },
-    [graph],
+    [graph, basemap],
   );
 
   const onMapClick = useCallback(
@@ -115,10 +149,104 @@ export default function App() {
         setTo([lat, lon]);
         setPicking(null);
         setFitRoutes(Date.now());
+      } else if (graph) {
+        // Tap a street to see how it rides and why.
+        // Taps near the drawn route mean the route, even if a side street is a hair closer.
+        const onRoute = new Set(routes.smooth?.edges.map((i) => graph.edges[i].key));
+        const hit = graph.nearestEdge(lat, lon, 25, (e) => onRoute.has(e.key)) ?? graph.nearestEdge(lat, lon, 30);
+        setInspect(hit ? { edge: hit.edge, lat, lon } : null);
       }
     },
-    [picking],
+    [picking, graph, routes.smooth],
   );
+
+  const streetInfo = useMemo((): StreetInfo | null => {
+    if (!inspect || !graph) return null;
+    const e = graph.edges[inspect.edge];
+    const seg = segments.get(e.key);
+    const measured = !!seg && seg.n >= 2;
+    const est = assessEdge(e, segments, { ...PROFILES.manual, stepsAllowed: true, maxInclinePct: 100 });
+    const [lat, lon] = graph.snap(inspect.lat, inspect.lon);
+    return {
+      edge: inspect.edge,
+      lat,
+      lon,
+      name: e.way.name ?? streetAt(lat, lon) ?? 'Unnamed path',
+      kind: e.way.h,
+      osmSurface: e.way.s,
+      incline: e.way.inc,
+      steps: e.way.h === 'steps',
+      score: measured ? segmentScore(seg) : Math.round((1 - est.discomfort) * 100),
+      measuredRides: measured ? seg.rides.length : 0,
+      lastSeen: measured ? seg.lastSeen : null,
+      joltsPerPass: measured ? joltsPerRide(seg) : 0,
+      surface: measured ? topSurface(seg) : null,
+      demo: measured && !mine.has(e.key),
+      barrier: barriers.find((b) => b.edgeKey === e.key) ?? null,
+    };
+  }, [inspect, graph, segments, barriers, streetAt, mine]);
+
+  const reportBarrier = (kind: BarrierKind) => {
+    if (!streetInfo || !graph) return;
+    const e = graph.edges[streetInfo.edge];
+    const b: Issue = {
+      id: `b-${Date.now().toString(36)}`,
+      kind: 'barrier',
+      barrier: kind,
+      edgeKey: e.key,
+      lat: streetInfo.lat,
+      lon: streetInfo.lon,
+      t: Date.now(),
+      street: streetInfo.name,
+      rideId: 'manual',
+      simulated: false,
+    };
+    const next = [...barriers, b];
+    setBarriers(next);
+    saveBarriers(next);
+    toast.success('Thanks, reported', { description: kind === 'hazard' ? 'Routes now steer around this spot when they can.' : 'Routes now avoid this street. It’s also in Reports, ready to send to the city.' });
+  };
+  const removeBarrier = (id: string) => {
+    const next = barriers.filter((b) => b.id !== id);
+    setBarriers(next);
+    saveBarriers(next);
+    toast('Marked as fixed');
+  };
+
+  const dismissWelcome = () => {
+    setFirstVisit(false);
+    try {
+      localStorage.setItem(WELCOMED_KEY, '1');
+    } catch {
+      /* private mode */
+    }
+  };
+
+  const shareRoute = async () => {
+    if (!from || !to) return;
+    const f = (p: [number, number]) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
+    const url = `${window.location.origin}${window.location.pathname}#from=${f(from)}&to=${f(to)}&p=${profile}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Step-free route on RollMap', url });
+        return;
+      } catch {
+        /* cancelled: fall through to copy */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied', { description: 'Anyone who opens it sees this route.' });
+    } catch {
+      window.prompt('Copy this link', url);
+    }
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (setInspect(null), setPicking(null));
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const lastPos = useRef(0);
   const startSession = useCallback(
@@ -178,7 +306,7 @@ export default function App() {
     if (session) session.label = label || undefined;
   }, [label, session]);
 
-  const issues = useMemo(() => rides.flatMap((r) => r.issues), [rides]);
+  const issues = useMemo(() => [...barriers, ...rides.flatMap((r) => r.issues)], [rides, barriers]);
 
   // Draw the ride on the street it happened on, not on raw GPS jitter.
   const rawTrail = live?.windows ?? lastRide?.windows ?? null;
@@ -207,7 +335,8 @@ export default function App() {
         to={tab === 'route' ? to : null}
         trail={trail}
         position={position}
-        issues={tab === 'reports' || (tab === 'ride' && lastRide) ? issues : []}
+        issues={tab === 'reports' || (tab === 'ride' && lastRide) ? issues : barriers}
+        selected={streetInfo ? graph!.edges[streetInfo.edge].way.n.map((i) => graph!.data.nodes[i]) : null}
         onMapClick={onMapClick}
         focus={focus}
         padding={mapPadding()}
@@ -216,6 +345,29 @@ export default function App() {
       <div className="map-chrome">
         <Legend showSegments={showSegments} onToggle={() => setShowSegments((v) => !v)} />
       </div>
+      {streetInfo && !picking && (
+        <div className="map-card">
+          <StreetCard
+            key={streetInfo.edge}
+            info={streetInfo}
+            onClose={() => setInspect(null)}
+            onReport={reportBarrier}
+            onFixed={removeBarrier}
+            onFrom={() => {
+              setFrom([streetInfo.lat, streetInfo.lon]);
+              setInspect(null);
+              setTab('route');
+              setFitRoutes(Date.now());
+            }}
+            onTo={() => {
+              setTo([streetInfo.lat, streetInfo.lon]);
+              setInspect(null);
+              setTab('route');
+              setFitRoutes(Date.now());
+            }}
+          />
+        </div>
+      )}
       {picking && (
         <div className="pick-hint" role="status">
           <span className={clsx('pick-dot', picking === 'from' ? 'is-a' : 'is-b')} />
@@ -276,9 +428,10 @@ export default function App() {
                 setFitRoutes(Date.now());
               }}
               onSimulate={(speedup) => startSession({ speedup })}
-              seedRides={seedRides}
-              mySegments={mine.size}
               riding={riding}
+              firstVisit={firstVisit}
+              onDismissWelcome={dismissWelcome}
+              onShare={shareRoute}
             />
           )}
           {tab === 'ride' && (
@@ -301,8 +454,10 @@ export default function App() {
               rides={rides}
               mySegments={mine}
               onFocus={(lat, lon) => setFocus({ lat, lon, zoom: 18.5, nonce: Date.now() })}
+              onRemove={removeBarrier}
               onCleared={() => {
                 setRides([]);
+                setBarriers([]);
                 setMine(new Map());
                 setLastRide(null);
               }}
@@ -312,7 +467,7 @@ export default function App() {
         </div>
       </aside>
 
-      <Toaster position="top-center" toastOptions={{ className: 'toast' }} />
+      <Toaster position={window.innerWidth > 860 ? 'bottom-center' : 'top-center'} toastOptions={{ className: 'toast' }} />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 // riders have measured on each segment with what OpenStreetMap tags say about it.
 
 import type { Edge, RoutableGraph } from './graph';
+import type { BarrierKind } from '../store';
 import { joltsPerRide, segmentScore, topSurface, type SegmentMap } from './segments';
 
 export type ProfileId = 'manual' | 'power' | 'stroller' | 'walking';
@@ -59,8 +60,10 @@ export interface EdgeAssessment {
   reason?: string;
 }
 
-export function assessEdge(e: Edge, segments: SegmentMap, p: Profile): EdgeAssessment {
+export function assessEdge(e: Edge, segments: SegmentMap, p: Profile, barriers?: Map<string, BarrierKind>): EdgeAssessment {
   const w = e.way;
+  const barrier = barriers?.get(e.key);
+  if (barrier && barrier !== 'hazard' && p.id !== 'walking') return { passable: false, factor: Infinity, discomfort: 1, measured: false, reason: 'reported barrier' };
   if (w.h === 'steps' && !p.stepsAllowed) return { passable: false, factor: Infinity, discomfort: 1, measured: false, reason: 'steps' };
   if (w.wc === 'no' && p.id !== 'walking') return { passable: false, factor: Infinity, discomfort: 1, measured: false, reason: 'tagged not wheelchair accessible' };
   const inc = inclinePct(w.inc);
@@ -82,7 +85,8 @@ export function assessEdge(e: Edge, segments: SegmentMap, p: Profile): EdgeAsses
   // Big roads without a mapped sidewalk are stressful and often lack curb ramps.
   const trafficPenalty = ['primary', 'secondary', 'primary_link', 'secondary_link'].includes(w.h) ? 0.3 : 0;
   const joltCost = seg ? (p.joltPenalty * joltsPerRide(seg)) / Math.max(1, e.length) : 0;
-  const factor = 1 + p.roughSensitivity * (discomfort + trafficPenalty) + (inc != null ? inc / 10 : 0) + joltCost;
+  const hazardCost = barrier === 'hazard' ? 2 : 0;
+  const factor = 1 + p.roughSensitivity * (discomfort + trafficPenalty) + (inc != null ? inc / 10 : 0) + joltCost + hazardCost;
   return { passable: true, factor, discomfort, measured };
 }
 
@@ -106,6 +110,7 @@ export function findRoute(
   from: number,
   to: number,
   profile: Profile,
+  barriers?: Map<string, BarrierKind>,
 ): RouteResult | null {
   const n = graph.data.nodes.length;
   const dist = new Float64Array(n).fill(Infinity);
@@ -147,7 +152,7 @@ export function findRoute(
   const cache = new Map<number, EdgeAssessment>();
   const assess = (idx: number) => {
     let a = cache.get(idx);
-    if (!a) cache.set(idx, (a = assessEdge(graph.edges[idx], segments, profile)));
+    if (!a) cache.set(idx, (a = assessEdge(graph.edges[idx], segments, profile, barriers)));
     return a;
   };
 

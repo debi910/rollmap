@@ -53,7 +53,7 @@ async function caption(text, sub = '') {
         el = document.createElement('div');
         el.id = 'demo-caption';
         el.style.cssText =
-          'position:fixed;left:440px;right:24px;bottom:24px;z-index:99999;background:rgba(9,14,28,.9);backdrop-filter:blur(8px);color:#fff;padding:14px 20px;border-radius:14px;font:600 21px/1.3 \'Inter Variable\',system-ui,sans-serif;letter-spacing:-.01em;box-shadow:0 8px 30px rgba(0,0,0,.3);transition:opacity .3s';
+          'position:fixed;left:440px;right:24px;bottom:24px;z-index:99999;background:rgba(9,14,28,.9);backdrop-filter:blur(8px);color:#fff;padding:14px 20px;border-radius:14px;font:600 21px/1.3 Inter Variable,system-ui,sans-serif;letter-spacing:-.01em;box-shadow:0 8px 30px rgba(0,0,0,.3);transition:opacity .3s';
         document.body.appendChild(el);
       }
       el.style.opacity = t ? '1' : '0';
@@ -69,8 +69,8 @@ async function card(title, lines, ms) {
       const el = document.createElement('div');
       el.id = 'demo-card';
       el.style.cssText =
-        'position:fixed;inset:0;z-index:100000;background:radial-gradient(circle at 20% 10%,#2563eb,#0b1b44 70%);color:#fff;display:flex;flex-direction:column;justify-content:center;padding:0 110px;font-family:\'Inter Variable\',system-ui,sans-serif';
-      el.innerHTML = `<div style="font:750 56px/1.1 \'Inter Variable\',system-ui;letter-spacing:-.03em">${t}</div>${l.map((x) => `<div style="font:400 25px/1.45 \'Inter Variable\',system-ui;margin-top:18px;max-width:1000px;opacity:.95">${x}</div>`).join('')}`;
+        'position:fixed;inset:0;z-index:100000;background:radial-gradient(circle at 20% 10%,#2563eb,#0b1b44 70%);color:#fff;display:flex;flex-direction:column;justify-content:center;padding:0 110px;font-family:Inter Variable,system-ui,sans-serif';
+      el.innerHTML = `<div style="font:750 56px/1.1 Inter Variable,system-ui;letter-spacing:-.03em">${t}</div>${l.map((x) => `<div style="font:400 25px/1.45 Inter Variable,system-ui;margin-top:18px;max-width:1000px;opacity:.95">${x}</div>`).join('')}`;
       document.body.appendChild(el);
     },
     [title, lines],
@@ -98,6 +98,8 @@ await page.goto(url);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.waitForSelector('.route-card', { timeout: 30000 });
+// Keep toasts clear of the caption bar.
+await page.addStyleTag({ content: '[data-sonner-toaster]{bottom:130px !important}' });
 await wait(1500);
 
 await say('intro');
@@ -110,16 +112,20 @@ await card(
   6500,
 );
 
+// A first-time visitor sees a one-line welcome before anything else.
 await say('monaco');
 await caption('Plan a trip in Monaco: hilly, full of steps and old paving', 'Real OpenStreetMap streets, steps and buildings. Coloured lines are the community comfort layer.');
-await wait(4500);
+await highlight('.welcome', 3000);
+await page.getByRole('button', { name: 'Got it' }).click();
+await wait(1200);
+await say('smooth');
+await caption('RollMap picks a step-free route that is far smoother', 'Cost = distance × measured discomfort, jolts, surface and incline, tuned to your chair.');
+await highlight('.route-card.is-smooth', 3600);
 await say('short');
 await caption('The shortest walk uses 5 flights of steps and 429 m of rough ground', 'Impossible in a wheelchair, and a rough ride with a stroller.');
+await page.locator('.compare-row').click();
 await highlight('.route-card.is-short', 3200);
-await say('smooth');
-await caption('RollMap finds a step-free route that is far smoother: comfort 89 vs 53', 'Cost = distance × measured discomfort, jolts, surface and incline, tuned to your chair.');
-await highlight('.route-card.is-smooth', 3200);
-await highlight('.verdict', 2200);
+await page.locator('.compare-row').click();
 await page.getByRole('radio', { name: /Stroller/ }).click();
 await say('profiles');
 await caption('Profiles weigh roughness differently: manual chair, power chair, stroller');
@@ -127,19 +133,34 @@ await wait(2800);
 await page.getByRole('radio', { name: /Manual/ }).click();
 await wait(800);
 
+// Tap a street on the route, then report it blocked and watch the route move.
+const tapAt = async (lat, lon) => {
+  const pt = await page.evaluate(([a, b]) => window.__rollmapMap.latLngToContainerPoint([a, b]), [lat, lon]);
+  await page.mouse.click(pt.x, pt.y);
+};
+await say('street');
+await caption('Tap any street to see how it rides, and how sure RollMap is', 'Number of rides that measured it, what it feels like, how often it jolts.');
+await tapAt(43.736016, 7.419258);
+await wait(3500);
+await say('barrier');
+await caption('Something in the way? Report it in two taps', 'The route goes around it at once, and the report is ready to send to the city.');
+await page.getByRole('button', { name: 'Report a problem' }).click();
+await wait(1500);
+await page.getByRole('button', { name: /Sidewalk blocked/ }).click();
+await wait(4000);
+await page.getByRole('button', { name: 'Close' }).click().catch(() => {});
+await wait(800);
+
 await say('sensing');
 await caption('Now the sensing: roll with a phone in the wheelchair bag', 'For this video we play a SIMULATED sensor stream through the exact pipeline the phone runs.');
 await wait(3500);
-await page.getByRole('button', { name: 'Simulate', exact: true }).click();
+await page.getByRole('button', { name: 'Watch a demo ride' }).click();
 await wait(2500);
 await say('iso');
 await caption('Live comfort score uses ISO 2631-1 Wk weighting', 'The international standard for how the seated human body feels vibration.');
 await wait(7000);
 await say('surface');
 await caption('An on-device neural network names the surface', 'Smooth, cracked, pavers, gravel. Trained on physics-based simulated rides.');
-await wait(7000);
-await say('orientation');
-await caption('Works with the phone in any orientation', 'Gravity tells us which way is down; vibration is projected onto it.');
 await wait(7000);
 await say('jolts');
 await caption('Curb drops and potholes are caught as jolts', 'Peak acceleration plus crest factor separates a single shock from continuous rough ground.');
@@ -152,7 +173,7 @@ await highlight('.summary', 4500);
 await page.getByRole('button', { name: /Review \d+ repair report/ }).click();
 await wait(800);
 await say('reports');
-await caption('Every problem becomes a ready-to-send city repair report', 'GPS location + measured shock. Copy, share, or export GeoJSON / Open311 for 311 systems.');
+await caption('Every problem becomes a ready-to-send city repair report', 'Measured by the ride or reported by hand. Copy, share, or export GeoJSON / Open311 for 311 systems.');
 await wait(2500);
 await page.getByRole('button', { name: 'Show on map' }).first().click();
 await wait(2500);
@@ -170,7 +191,7 @@ await card(
   7500,
 );
 
-await page.getByRole('tab', { name: 'How it works' }).click();
+await page.getByRole('tab', { name: 'About' }).click();
 await say('honest');
 await caption('Open, explainable, and honest about what is simulated', 'Sensing, scoring, routing and reports run on real phones today. "Teach RollMap" collects labelled field data.');
 await wait(3000);

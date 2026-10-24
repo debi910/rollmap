@@ -109,6 +109,9 @@ export function Legend({ showSegments, onToggle }: { showSegments: boolean; onTo
         <span>
           <i className="k-route" /> Route
         </span>
+        <span>
+          <i className="k-lift" /> Lift
+        </span>
       </div>
     </div>
   );
